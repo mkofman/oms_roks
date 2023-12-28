@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db2-secret
+  namespace: db2
+data:
+  DB2INST1_PASSWORD: ZGIyaW5zdDE=  #db2inst1
+type: Opaque
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: db2-ci
+spec:
+  type: ClusterIP
+  selector:
+    app: db2
+  ports:
+    - name: db2-http
+      protocol: TCP
+      port: 50000
+      targetPort: 50000
+    - name: db2-https
+      protocol: TCP
+      port: 50001
+      targetPort: 50001
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: db2-lb
+spec:
+  selector:
+    app: db2
+  type: LoadBalancer
+  ports:
+    - name: db2-http
+      protocol: TCP
+      port: 50000
+      targetPort: 50000
+    - name: db2-https
+      protocol: TCP
+      port: 50001
+      targetPort: 50001
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db2
+spec:
+  selector:
+    matchLabels:
+      app: db2
+  serviceName: "db2"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: db2
+    spec:
+      serviceAccount: db2
+      containers:
+      - name: db2
+        securityContext:
+          privileged: true
+        image: ibmcom/db2:11.5.5.1
+        env:
+        - name: DB2INST1_PASSWORD
+          valueFrom:
+            secretKeyRef: 
+              name: db2-secret
+              key: DB2INST1_PASSWORD
+        - name: LICENSE 
+          value: accept 
+        - name: DB2INSTANCE 
+          value: db2inst1       
+        ports:
+        - containerPort: 50000
+          name: db2-http
+        - containerPort: 50001
+          name: db2-https
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - mountPath: /database
+          name: db2vol
+  volumeClaimTemplates:
+  - metadata:
+      name: db2vol
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      persistentVolumeReclaimPolicy: "Delete"
+      resources:
+        requests:
+          storage: 20Gi
+      storageClassName: ibmc-block-gold
